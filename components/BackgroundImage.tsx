@@ -22,7 +22,7 @@ export default function Background({
           loop
           playsInline
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ animationDuration: '20s' }}
+          style={{ animationDuration: '100s' }}
         >
           <source src={videoPath} type="video/mp4" />
           <source src={videoPath.replace('.mp4', '.webm')} type="video/webm" />

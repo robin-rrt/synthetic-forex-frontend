@@ -30,12 +30,10 @@ export default function CurrencyInput({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 
   const handleTokenSelect = (token: Token) => {
-    console.log('Token selected:', token)
     setSelectedToken(token)
   }
 
   const handleToggle = () => {
-    console.log('Toggle clicked, current state:', isDropdownOpen)
     setIsDropdownOpen(!isDropdownOpen)
   }
 
@@ -64,7 +62,7 @@ export default function CurrencyInput({
           {!showSelectButton && onMaxClick ? (
             <button 
               onClick={onMaxClick}
-              className="px-4 py-2 bg-orange-400 text-white rounded-xl hover:bg-orange-500 transition-all duration-300 font-semibold"
+              className="px-4 py-2 bg-green-400 text-white rounded-xl hover:bg-green-500 transition-all duration-300 font-semibold"
             >
               MAX
             </button>

@@ -65,7 +65,7 @@ export default function Home() {
         ) : (
           <button 
             onClick={handleConnectWallet}
-            className="bg-orange-400 backdrop-blur-sm text-white px-8 py-3 rounded-xl hover:bg-orange-500 transition-colors border border-orange-300/30 text-lg font-semibold cursor-pointer shadow-lg"
+            className="bg-green-400 backdrop-blur-sm text-white px-8 py-3 rounded-xl hover:bg-green-500 transition-colors border border-green-300/30 text-lg font-semibold cursor-pointer shadow-lg"
             style={{ pointerEvents: 'auto' }}
           >
             Connect
@@ -74,7 +74,7 @@ export default function Home() {
       </div>
       
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 max-w-lg pt-32">
+      <div className="relative z-10 container mx-auto px-4 max-w-2xl pt-32">
         <div className="bg-white/20 backdrop-blur-md rounded-2xl shadow-2xl p-6 border border-white/30">
           {/* Tab Navigation */}
           <div className="flex items-center space-x-1 bg-white/10 backdrop-blur-sm rounded-xl p-1 border border-white/20 mb-6">
@@ -82,7 +82,7 @@ export default function Home() {
               onClick={() => setActiveTab('swap')}
               className={`flex-1 px-6 py-3 rounded-lg transition-all duration-200 ${
                 activeTab === 'swap'
-                  ? 'bg-orange-400 text-white font-semibold hover:bg-orange-500'
+                  ? 'bg-green-400 text-white font-semibold hover:bg-green-500'
                   : 'text-white/70 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -92,7 +92,7 @@ export default function Home() {
               onClick={() => setActiveTab('buy')}
               className={`flex-1 px-6 py-3 rounded-lg transition-all duration-200 ${
                 activeTab === 'buy'
-                  ? 'bg-orange-400 text-white font-semibold hover:bg-orange-500'
+                  ? 'bg-green-400 text-white font-semibold hover:bg-green-500'
                   : 'text-white/70 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -145,7 +145,7 @@ export default function Home() {
                 <RecipientInput />
 
                 {/* Swap Button */}
-                <button className="w-full bg-orange-400 backdrop-blur-sm text-white text-lg font-bold py-4 rounded-2xl hover:bg-orange-500 transition-all duration-300 shadow-lg border border-orange-300/30">
+                <button className="w-full bg-green-400 backdrop-blur-sm text-white text-lg font-bold py-4 rounded-2xl hover:bg-green-500 transition-all duration-300 shadow-lg border border-green-300/30">
                   Swap
                 </button>
               </>
@@ -171,7 +171,7 @@ export default function Home() {
                 />
 
                 {/* Buy Button */}
-                <button className="w-full bg-orange-400 backdrop-blur-sm text-white text-lg font-bold py-4 rounded-2xl hover:bg-orange-500 transition-all duration-300 shadow-lg border border-orange-300/30">
+                <button className="w-full bg-green-400 backdrop-blur-sm text-white text-lg font-bold py-4 rounded-2xl hover:bg-green-500 transition-all duration-300 shadow-lg border border-green-300/30">
                   Buy
                 </button>
               </>

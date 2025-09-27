@@ -99,12 +99,7 @@ export default function TokenDropdown({ selectedToken, onTokenSelect, isOpen, on
     <>
       {/* Token Selection Button */}
       <button
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          console.log('Token button clicked, isOpen:', isOpen)
-          onToggle()
-        }}
+        onClick={onToggle}
         className="flex items-center space-x-3 bg-white/10 backdrop-blur-sm hover:bg-white/20 transition-all duration-200 rounded-xl px-4 py-3 border border-white/20 min-w-[140px]"
       >
         {selectedToken ? (
@@ -117,7 +112,7 @@ export default function TokenDropdown({ selectedToken, onTokenSelect, isOpen, on
           </>
         ) : (
           <>
-            <div className="w-8 h-8 bg-orange-400 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-green-400 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">?</span>
             </div>
             <span className="text-white/70 text-sm">Select Token</span>
@@ -135,31 +130,20 @@ export default function TokenDropdown({ selectedToken, onTokenSelect, isOpen, on
 
       {/* Token Selection Modal */}
       {isOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-          {console.log('Rendering modal, isOpen:', isOpen)}
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center">
           {/* Backdrop */}
           <div 
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              console.log('Backdrop clicked')
-              onToggle()
-            }}
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm z-[99998]"
+            onClick={onToggle}
           />
           
           {/* Modal */}
-          <div className="relative bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border-4 border-red-500">
+          <div className="relative bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl z-[100000]">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-gray-900">Select Token</h2>
               <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  console.log('Close button clicked')
-                  onToggle()
-                }}
+                onClick={onToggle}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -175,7 +159,7 @@ export default function TokenDropdown({ selectedToken, onTokenSelect, isOpen, on
                   onClick={() => setSelectedChain('sepolia')}
                   className={`flex-1 px-4 py-2 rounded-lg transition-all duration-200 ${
                     selectedChain === 'sepolia'
-                      ? 'bg-orange-400 text-white font-semibold hover:bg-orange-500'
+                      ? 'bg-green-400 text-white font-semibold hover:bg-green-500'
                       : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                   }`}
                 >
@@ -185,7 +169,7 @@ export default function TokenDropdown({ selectedToken, onTokenSelect, isOpen, on
                   onClick={() => setSelectedChain('flow-testnet')}
                   className={`flex-1 px-4 py-2 rounded-lg transition-all duration-200 ${
                     selectedChain === 'flow-testnet'
-                      ? 'bg-orange-400 text-white font-semibold hover:bg-orange-500'
+                      ? 'bg-green-400 text-white font-semibold hover:bg-green-500'
                       : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
                   }`}
                 >
@@ -199,10 +183,7 @@ export default function TokenDropdown({ selectedToken, onTokenSelect, isOpen, on
               {filteredTokens.map((token, index) => (
                 <button
                   key={`${token.chain}-${token.symbol}-${index}`}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    console.log('Token selected:', token.symbol)
+                  onClick={() => {
                     onTokenSelect(token)
                     onToggle()
                   }}
@@ -212,7 +193,7 @@ export default function TokenDropdown({ selectedToken, onTokenSelect, isOpen, on
                   <div className="flex-1 text-left">
                     <div className="flex items-center space-x-2">
                       <span className="text-gray-900 font-semibold">{token.symbol}</span>
-                      <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">
+                      <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">
                         {token.chain}
                       </span>
                     </div>
