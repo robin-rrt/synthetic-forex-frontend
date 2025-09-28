@@ -10,7 +10,7 @@ const config = getDefaultConfig({
   appName: 'Token Swap App',
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo-project-id',
   chains: [mainnet, sepolia],
-  ssr: false, // If your dApp uses server side rendering (SSR)
+  ssr: false, // Disable SSR to prevent hydration issues
 })
 
 const queryClient = new QueryClient()

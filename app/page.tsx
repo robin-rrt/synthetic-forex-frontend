@@ -10,6 +10,9 @@ import AmountInput from '@/components/AmountInput'
 import RecipientInput from '@/components/RecipientInput'
 import Background from '@/components/BackgroundImage'
 import Header from '@/components/Header'
+import { usePythPricing } from '@/hooks/usePythPricing'
+import { useForexAmmSwap, useForexAmmQuote, useForexAmmStatus } from '@/hooks/useForexAmmSwap'
+import { getTokenAddress, getTokenDecimals } from '@/services/forexAmmService'
 
 interface TokenBalance {
   symbol: string
@@ -20,14 +23,32 @@ interface TokenBalance {
 
 export default function Home() {
   const { address, isConnected } = useAccount()
+  const [isClient, setIsClient] = useState(false)
+  
+  // Pyth pricing hook
+  const { 
+    usdInrRate, 
+    isLoading: pythLoading, 
+    error: pythError, 
+    calculateSwapOutput,
+    lastUpdated 
+  } = usePythPricing()
+
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
   
   // Get ETH balance using wagmi
-  const { data: ethBalance, isLoading: ethLoading } = useBalance({
+  const { data: ethBalance, isLoading: ethLoading, error: ethError } = useBalance({
     address: address,
+    query: {
+      enabled: !!address && isConnected
+    }
   })
   
   // Get token balances using wagmi
-  const { data: sINRBalance } = useReadContract({
+  const { data: sINRBalance, isLoading: sINRLoading, error: sINRError } = useReadContract({
     address: '0x814ebF49951162795526126553BEbd3C52cd942A',
     abi: [
       {
@@ -40,9 +61,12 @@ export default function Home() {
     ],
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
+    query: {
+      enabled: !!address && isConnected
+    }
   })
   
-  const { data: pyusdcBalance } = useReadContract({
+  const { data: pyusdcBalance, isLoading: pyusdcLoading, error: pyusdcError } = useReadContract({
     address: '0xCaC524BcA292aaade2DF8A05cC58F0a65B1B3bB9',
     abi: [
       {
@@ -55,6 +79,9 @@ export default function Home() {
     ],
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
+    query: {
+      enabled: !!address && isConnected
+    }
   })
   
   const [fromAmount, setFromAmount] = useState('')
@@ -74,6 +101,31 @@ export default function Home() {
   const [limitPrice, setLimitPrice] = useState('')
   const [selectedToken, setSelectedToken] = useState('sINR')
   const [isSwapping, setIsSwapping] = useState(false)
+
+  // ForexAMM hooks
+  const { executeSwap, hash: swapHash, isLoading: swapLoading, isPending: swapPending, isSuccess: swapSuccess, isError: swapError, error: swapErrorMsg } = useForexAmmSwap()
+  
+  // Get quote from ForexAMM for PYUSD swaps
+  const tokenOutAddress = getTokenAddress(toToken)
+  
+  // Debug token address lookup
+  console.log('🔍 Token address lookup debug:', {
+    toToken,
+    tokenOutAddress,
+    fromToken
+  })
+  const { 
+    data: ammQuote, 
+    isLoading: ammQuoteLoading, 
+    error: ammQuoteError 
+  } = useForexAmmQuote(
+    tokenOutAddress || undefined, 
+    fromAmount, 
+    !!(isConnected && fromToken === 'PYUSDC' && fromAmount && fromAmount !== '0')
+  )
+  
+  // Check if ForexAMM is paused
+  const { data: isAmmPaused, isLoading: ammStatusLoading } = useForexAmmStatus()
   const [swapQuote, setSwapQuote] = useState<{
     amountOut: string
     fee: string
@@ -214,13 +266,32 @@ export default function Home() {
 
 
   const getTokenBalance = (symbol: string) => {
+    console.log(`🔍 Getting balance for ${symbol}:`, {
+      symbol,
+      ethBalance,
+      sINRBalance,
+      pyusdcBalance,
+      isConnected,
+      address
+    })
+    
     switch (symbol) {
       case 'ETH':
-        return ethBalance ? parseFloat(ethBalance.formatted).toFixed(6) : '0.000000'
+        const ethResult = ethBalance ? parseFloat(ethBalance.formatted).toFixed(6) : '0.000000'
+        console.log(`💰 ETH balance result:`, ethResult)
+        return ethResult
       case 'sINR':
-        return sINRBalance ? parseFloat(formatUnits(sINRBalance, 18)).toFixed(4) : '0.0000'
+        // sINR has -5 decimals (10^-5), so we need to divide by 10^5 = 100000
+        const sINRResult = sINRBalance && typeof sINRBalance === 'bigint' ? 
+          (Number(sINRBalance) / 100000).toFixed(5) : '0.00000'
+        console.log(`💰 sINR balance result:`, sINRResult, 'Raw:', sINRBalance)
+        return sINRResult
       case 'PYUSDC':
-        return pyusdcBalance ? parseFloat(formatUnits(pyusdcBalance, 6)).toFixed(4) : '0.0000'
+        // PYUSDC has 6 decimals (10^6)
+        const pyusdcResult = pyusdcBalance && typeof pyusdcBalance === 'bigint' ? 
+          parseFloat(formatUnits(pyusdcBalance, 6)).toFixed(6) : '0.000000'
+        console.log(`💰 PYUSDC balance result:`, pyusdcResult, 'Raw:', pyusdcBalance)
+        return pyusdcResult
       default:
         return '0.0000'
     }
@@ -347,63 +418,86 @@ export default function Home() {
   }
 
   // Execute swap
-  const executeSwap = async () => {
-    if (!fromAmount || !fromToken || !toToken || !swapQuote) {
-      alert('Please enter amounts and get a quote first')
+  const executeSwapTransaction = async () => {
+    if (!fromAmount || fromAmount === '0') {
+      alert('Please enter a valid amount to swap')
       return
     }
 
-    setIsSwapping(true)
+    if (!isConnected || !address) {
+      alert('Please connect your wallet first')
+      return
+    }
+
+    if (isAmmPaused) {
+      alert('ForexAMM contract is currently paused. Please try again later.')
+      return
+    }
+
+    if (!tokenOutAddress) {
+      alert(`Token address not found for ${toToken}. Available tokens: PYUSDC, SINR, ETH`)
+      console.error('Token address lookup failed:', { 
+        toToken, 
+        tokenOutAddress
+      })
+      return
+    }
+
+    if (tokenOutAddress === '0x0000000000000000000000000000000000000000') {
+      alert(`Token address for ${toToken} is set to zero address. Please update the token configuration.`)
+      console.error('Zero address detected:', { 
+        toToken, 
+        tokenOutAddress 
+      })
+      return
+    }
+
+    console.log('Swap parameters:', {
+      tokenOutAddress,
+      amountIn: fromAmount,
+      fromToken,
+      toToken
+    })
 
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum as any)
-      const signer = await provider.getSigner()
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
-      
-      const tokenInAddress = TOKEN_ADDRESSES[fromToken as keyof typeof TOKEN_ADDRESSES]
-      const tokenOutAddress = TOKEN_ADDRESSES[toToken as keyof typeof TOKEN_ADDRESSES]
-      
-      if (!tokenInAddress || !tokenOutAddress) {
-        throw new Error('Invalid token addresses')
+      console.log('Executing ForexAMM swap:', {
+        fromToken,
+        toToken,
+        fromAmount,
+        tokenOutAddress,
+        recipient: address
+      })
+
+      // Calculate minimum amount out (5% slippage tolerance)
+      const minAmountOut = ammQuote && ammQuote[0] 
+        ? (Number(ammQuote[0]) * 0.95).toString()
+        : '0'
+
+      // Execute swap via ForexAMM contract
+      const result = await executeSwap({
+        tokenOutAddress,
+        amountIn: fromAmount,
+        minAmountOut,
+        usePriceUpdate: false // Try without price update first to debug
+      })
+
+      if (result.isError) {
+        throw new Error(result.error?.message || 'Swap transaction failed')
       }
 
-      const amountInWei = ethers.parseUnits(fromAmount, 18)
-      const minAmountOut = ethers.parseUnits(
-        (parseFloat(swapQuote.amountOut) * 0.95).toString(), // 5% slippage tolerance
-        18
-      )
-
-      // Approve token if needed
-      const approved = await approveToken(tokenInAddress, fromAmount)
-      if (!approved) {
-        throw new Error('Token approval failed')
-      }
-
-      let tx
-      if (fromToken === 'PYUSDC') {
-        // PYUSDC to other token
-        tx = await contract.swapPYUSDForToken(tokenOutAddress, amountInWei, minAmountOut)
-      } else if (toToken === 'PYUSDC') {
-        // Other token to PYUSDC
-        tx = await contract.swapTokenForPYUSD(tokenInAddress, amountInWei, minAmountOut)
-      } else {
-        // Token to token
-        tx = await contract.swapTokenForToken(tokenInAddress, tokenOutAddress, amountInWei, minAmountOut, false)
-      }
-
-      await tx.wait()
+      console.log('Swap transaction submitted:', result.hash)
+      alert(`Swap transaction submitted!\nHash: ${result.hash}\n${fromAmount} ${fromToken} → ${toToken}`)
       
-      // Clear form - balances will auto-refresh with wagmi
-      setFromAmount('')
-      setToAmount('')
-      setSwapQuote(null)
+      // Reset amounts after successful transaction
+      if (result.isSuccess) {
+        setFromAmount('')
+        setToAmount('')
+        setSwapQuote(null)
+      }
       
-      alert('Swap completed successfully!')
-    } catch (error: any) {
-      console.error('Swap failed:', error)
-      alert(`Swap failed: ${error.message || 'Unknown error'}`)
-    } finally {
-      setIsSwapping(false)
+    } catch (error) {
+      console.error('Swap execution failed:', error)
+      alert(`Swap execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -431,10 +525,29 @@ ETH: ${getTokenBalance('ETH')}
 sINR: ${getTokenBalance('sINR')}
 PYUSDC: ${getTokenBalance('PYUSDC')}
 
-Address: ${address}
+Raw Data Debug:
+ETH Balance Data: ${ethBalance ? JSON.stringify(ethBalance, null, 2) : 'null'}
 ETH Loading: ${ethLoading}
-sINR Balance: ${sINRBalance ? formatUnits(sINRBalance, 18) : 'N/A'}
-PYUSDC Balance: ${pyusdcBalance ? formatUnits(pyusdcBalance, 6) : 'N/A'}`
+ETH Error: ${ethError ? ethError.message : 'None'}
+
+sINR Balance Data: ${sINRBalance ? sINRBalance.toString() : 'null'}
+sINR Loading: ${sINRLoading}
+sINR Error: ${sINRError ? sINRError.message : 'None'}
+
+PYUSDC Balance Data: ${pyusdcBalance ? pyusdcBalance.toString() : 'null'}
+PYUSDC Loading: ${pyusdcLoading}
+PYUSDC Error: ${pyusdcError ? pyusdcError.message : 'None'}
+
+Pyth Pricing:
+USD/INR Rate: ${usdInrRate ? usdInrRate.toFixed(4) : 'N/A'}
+Pyth Loading: ${pythLoading}
+Pyth Error: ${pythError || 'None'}
+Last Updated: ${lastUpdated ? lastUpdated.toLocaleString() : 'Never'}
+
+Connection Info:
+Address: ${address}
+Is Connected: ${isConnected}
+Is Client: ${isClient}`
     
     console.log('📊 Token Balance Test Results:', result)
     alert(result)
@@ -443,11 +556,37 @@ PYUSDC Balance: ${pyusdcBalance ? formatUnits(pyusdcBalance, 6) : 'N/A'}`
   // Get quote when amounts change
   useEffect(() => {
     if (fromAmount && fromToken && toToken && parseFloat(fromAmount) > 0) {
-      getSwapQuote(fromToken, toToken, fromAmount)
+      // Check if we can use Pyth pricing for PYUSD/sINR pairs
+      if ((fromToken === 'PYUSDC' && toToken === 'sINR') || 
+          (fromToken === 'sINR' && toToken === 'PYUSDC')) {
+        
+        const pythResult = calculateSwapOutput(fromAmount, fromToken, toToken)
+        
+        if (pythResult.error) {
+          console.warn('Pyth pricing error:', pythResult.error)
+          // Fallback to contract quote
+          getSwapQuote(fromToken, toToken, fromAmount)
+        } else {
+          // Use Pyth pricing
+          setSwapQuote({
+            amountOut: pythResult.outputAmount,
+            fee: '0.0000', // Pyth doesn't provide fee info, using 0 for now
+            price: pythResult.rate,
+            slippage: '0' // Pyth provides spot price, no slippage
+          })
+          
+          // Update the "to" amount with the calculated output
+          setToAmount(pythResult.outputAmount)
+        }
+      } else {
+        // Use contract quote for other token pairs
+        getSwapQuote(fromToken, toToken, fromAmount)
+      }
     } else {
       setSwapQuote(null)
+      setToAmount('')
     }
-  }, [fromAmount, fromToken, toToken, getSwapQuote])
+  }, [fromAmount, fromToken, toToken, getSwapQuote, calculateSwapOutput])
 
   return (
     <main className="min-h-screen relative">
@@ -458,17 +597,19 @@ PYUSDC Balance: ${pyusdcBalance ? formatUnits(pyusdcBalance, 6) : 'N/A'}`
       <Header onPageChange={setActivePage} />
       
       {/* Connect Button - Top Right */}
-      <div className="absolute top-6 right-6 z-40 flex flex-col space-y-2">
-        <ConnectButton />
-        {isConnected && (
-          <button
-            onClick={testTokenBalances}
-            className="bg-blue-500/20 backdrop-blur-sm text-white px-4 py-2 rounded-xl hover:bg-blue-500/30 transition-colors border border-blue-500/30 text-sm"
-          >
-            Test Balances
-          </button>
-        )}
-      </div>
+      {isClient && (
+        <div className="absolute top-6 right-6 z-40 flex flex-col space-y-2">
+          <ConnectButton />
+          {isConnected && (
+            <button
+              onClick={testTokenBalances}
+              className="bg-blue-500/20 backdrop-blur-sm text-white px-4 py-2 rounded-xl hover:bg-blue-500/30 transition-colors border border-blue-500/30 text-sm"
+            >
+              Test Balances
+            </button>
+          )}
+        </div>
+      )}
       
       {/* Content */}
       {activePage === 'trade' ? (
@@ -510,7 +651,7 @@ PYUSDC Balance: ${pyusdcBalance ? formatUnits(pyusdcBalance, 6) : 'N/A'}`
 
                 <CurrencyInput
                   label="From"
-                  balance={getTokenBalance(fromToken)}
+                  balance={isClient ? getTokenBalance(fromToken) : '0.0000'}
                   amount={fromAmount}
                   onAmountChange={setFromAmount}
                   onMaxClick={handleMaxClick}
@@ -530,7 +671,7 @@ PYUSDC Balance: ${pyusdcBalance ? formatUnits(pyusdcBalance, 6) : 'N/A'}`
                 {/* To Currency */}
                 <CurrencyInput
                   label="To"
-                  balance={getTokenBalance(toToken)}
+                  balance={isClient ? getTokenBalance(toToken) : '0.0000'}
                   amount={toAmount}
                   onAmountChange={setToAmount}
                   selectedToken={toToken}
@@ -545,17 +686,85 @@ PYUSDC Balance: ${pyusdcBalance ? formatUnits(pyusdcBalance, 6) : 'N/A'}`
                   <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
                     <div className="text-center text-white/90 mb-2">
                       <div className="text-sm">Estimated Output: {parseFloat(swapQuote.amountOut).toFixed(6)}</div>
-                      <div className="text-sm">Fee: {parseFloat(swapQuote.fee).toFixed(6)}</div>
-                      <div className="text-sm">Price: {parseFloat(swapQuote.price).toFixed(6)}</div>
-                      <div className="text-sm">Slippage: {swapQuote.slippage} bps</div>
+                      
+                      {/* Show Pyth pricing info for PYUSD/sINR pairs */}
+                      {((fromToken === 'PYUSDC' && toToken === 'sINR') || 
+                        (fromToken === 'sINR' && toToken === 'PYUSDC')) && (
+                        <>
+                          <div className="text-sm">
+                            Pyth Rate: {swapQuote.price} USD/INR
+                          </div>
+                          {pythLoading && (
+                            <div className="text-xs text-yellow-400">Updating rate...</div>
+                          )}
+                          {pythError && (
+                            <div className="text-xs text-red-400">Rate error: {pythError}</div>
+                          )}
+                          {lastUpdated && (
+                            <div className="text-xs text-gray-400">
+                              Updated: {lastUpdated.toLocaleTimeString()}
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
+                      {/* Show contract quote info for other pairs */}
+                      {!((fromToken === 'PYUSDC' && toToken === 'sINR') || 
+                          (fromToken === 'sINR' && toToken === 'PYUSDC')) && (
+                        <>
+                          <div className="text-sm">Fee: {parseFloat(swapQuote.fee).toFixed(6)}</div>
+                          <div className="text-sm">Price: {parseFloat(swapQuote.price).toFixed(6)}</div>
+                          <div className="text-sm">Slippage: {swapQuote.slippage} bps</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ForexAMM Quote Display */}
+                {fromToken === 'PYUSDC' && ammQuote && (
+                  <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                    <h3 className="text-white font-semibold mb-2">ForexAMM Quote</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between text-white/80">
+                        <span>Amount Out:</span>
+                        <span>{formatUnits(ammQuote[0], getTokenDecimals(toToken))}</span>
+                      </div>
+                      <div className="flex justify-between text-white/80">
+                        <span>Fee:</span>
+                        <span>{formatUnits(ammQuote[1], 6)} PYUSD</span>
+                      </div>
+                      <div className="flex justify-between text-white/80">
+                        <span>Price:</span>
+                        <span>{formatUnits(ammQuote[2], 18)}</span>
+                      </div>
+                      <div className="flex justify-between text-white/80">
+                        <span>Slippage:</span>
+                        <span>{Number(ammQuote[3]) / 100}%</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Debug Info */}
+                {isClient && (
+                  <div className="bg-yellow-500/10 backdrop-blur-sm rounded-xl p-4 border border-yellow-500/20">
+                    <h3 className="text-yellow-400 font-semibold mb-2">🐛 Debug Info</h3>
+                    <div className="space-y-1 text-xs text-yellow-200/80">
+                      <div>From Token: {fromToken}</div>
+                      <div>To Token: {toToken}</div>
+                      <div>Amount: {fromAmount}</div>
+                      <div>Token Address: {tokenOutAddress || 'Not found'}</div>
+                      <div>Contract Paused: {isAmmPaused ? 'Yes' : 'No'}</div>
+                      <div>Swap Quote: {swapQuote ? 'Available' : 'None'}</div>
                     </div>
                   </div>
                 )}
 
                 {/* Swap Button */}
                 <button 
-                  onClick={executeSwap}
-                  disabled={isSwapping || !swapQuote}
+                  onClick={executeSwapTransaction}
+                  disabled={swapLoading || swapPending || !swapQuote || isAmmPaused }
                   className="w-full bg-[#95B309] backdrop-blur-sm text-white text-lg font-bold py-4 rounded-2xl hover:bg-[#7A9207] transition-all duration-300 shadow-lg border border-[#95B309]/30 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSwapping ? 'Swapping...' : 'Swap'}
@@ -569,7 +778,7 @@ PYUSDC Balance: ${pyusdcBalance ? formatUnits(pyusdcBalance, 6) : 'N/A'}`
                 {/* From Token */}
                 <CurrencyInput
                   label="Pay with"
-                  balance={getTokenBalance('sINR')}
+                  balance={isClient ? getTokenBalance('sINR') : '0.0000'}
                   amount={buyFromAmount}
                   onAmountChange={setBuyFromAmount}
                 />
@@ -577,7 +786,7 @@ PYUSDC Balance: ${pyusdcBalance ? formatUnits(pyusdcBalance, 6) : 'N/A'}`
                 {/* To Token */}
                 <CurrencyInput
                   label="Receive"
-                  balance={getTokenBalance('PYUSDC')}
+                  balance={isClient ? getTokenBalance('PYUSDC') : '0.0000'}
                   amount={buyToAmount}
                   onAmountChange={setBuyToAmount}
                 />
@@ -605,7 +814,7 @@ PYUSDC Balance: ${pyusdcBalance ? formatUnits(pyusdcBalance, 6) : 'N/A'}`
           <div className="bg-white/20 backdrop-blur-md rounded-2xl shadow-2xl p-6 border border-white/30 mb-6">
             <div className="text-center">
               <h2 className="text-xl font-semibold text-white mb-2">Total Portfolio Value</h2>
-              <p className="text-3xl font-bold text-[#95B309]">{getTotalPortfolioValue()} Tokens</p>
+              <p className="text-3xl font-bold text-[#95B309]">{isClient ? getTotalPortfolioValue() : '0.0000'} Tokens</p>
             </div>
           </div>
 
@@ -627,12 +836,12 @@ PYUSDC Balance: ${pyusdcBalance ? formatUnits(pyusdcBalance, 6) : 'N/A'}`
                 >
                   {Object.keys(TOKEN_ADDRESSES).map((token) => (
                     <option key={token} value={token} className="bg-gray-800 text-white">
-                      {token} - Balance: {getTokenBalance(token)}
+                      {token} - Balance: {isClient ? getTokenBalance(token) : '0.0000'}
                     </option>
                   ))}
                 </select>
                 <div className="mt-2 text-sm text-white/70">
-                  Available: {getTokenBalance(selectedToken)} {selectedToken}
+                  Available: {isClient ? getTokenBalance(selectedToken) : '0.0000'} {selectedToken}
                 </div>
               </div>
 
