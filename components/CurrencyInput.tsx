@@ -16,6 +16,8 @@ interface CurrencyInputProps {
   onAmountChange: (amount: string) => void
   onMaxClick?: () => void
   showSelectButton?: boolean
+  selectedToken?: string
+  onTokenSelect?: (token: string) => void
 }
 
 export default function CurrencyInput({
@@ -24,13 +26,16 @@ export default function CurrencyInput({
   amount,
   onAmountChange,
   onMaxClick,
-  showSelectButton = false
+  showSelectButton = false,
+  selectedToken: propSelectedToken,
+  onTokenSelect
 }: CurrencyInputProps) {
   const [selectedToken, setSelectedToken] = useState<Token | null>(null)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 
   const handleTokenSelect = (token: Token) => {
     setSelectedToken(token)
+    onTokenSelect?.(token.symbol)
   }
 
   const handleToggle = () => {
@@ -43,12 +48,6 @@ export default function CurrencyInput({
         {label}
       </label>
       <div className="flex items-center space-x-4">
-        <TokenDropdown
-          selectedToken={selectedToken}
-          onTokenSelect={handleTokenSelect}
-          isOpen={isDropdownOpen}
-          onToggle={handleToggle}
-        />
         <div className="flex-1">
           <input
             type="text"
@@ -58,19 +57,25 @@ export default function CurrencyInput({
             className="w-full text-xl font-semibold bg-transparent border-none outline-none placeholder-white/50 text-white"
           />
         </div>
-        <div className="text-gray-600">
-          {!showSelectButton && onMaxClick ? (
-            <button 
-              onClick={onMaxClick}
-              className="px-4 py-2 bg-green-400 text-white rounded-xl hover:bg-green-500 transition-all duration-300 font-semibold"
-            >
-              MAX
-            </button>
-          ) : null}
-        </div>
+        <TokenDropdown
+          selectedToken={selectedToken}
+          onTokenSelect={handleTokenSelect}
+          isOpen={isDropdownOpen}
+          onToggle={handleToggle}
+        />
       </div>
-      <div className="mt-2 text-sm text-white/70">
-        Balance: {balance}
+      <div className="mt-2 flex items-center justify-between">
+        <div className="text-sm text-white/70">
+          Balance: {balance}
+        </div>
+        {!showSelectButton && onMaxClick ? (
+          <button 
+            onClick={onMaxClick}
+            className="text-sm text-[#95B309] hover:text-[#7A9207] transition-colors font-medium"
+          >
+            MAX
+          </button>
+        ) : null}
       </div>
     </div>
   )

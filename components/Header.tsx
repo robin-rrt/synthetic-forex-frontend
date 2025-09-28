@@ -1,6 +1,10 @@
 import { useState } from 'react'
 
-export default function Header() {
+interface HeaderProps {
+  onPageChange?: (page: 'trade' | 'portfolio') => void
+}
+
+export default function Header({ onPageChange }: HeaderProps) {
   const [activeTab, setActiveTab] = useState('portfolio')
 
   return (
@@ -11,7 +15,10 @@ export default function Header() {
           {/* Navigation Buttons */}
           <div className="flex items-center space-x-1 bg-white/10 backdrop-blur-sm rounded-xl p-1 border border-white/20">
             <button
-              onClick={() => setActiveTab('trade')}
+              onClick={() => {
+                setActiveTab('trade')
+                onPageChange?.('trade')
+              }}
               className={`px-6 py-2 rounded-lg transition-all duration-200 ${
                 activeTab === 'trade'
                   ? 'bg-white/20 text-white font-semibold'
@@ -21,7 +28,10 @@ export default function Header() {
               Trade
             </button>
             <button
-              onClick={() => setActiveTab('portfolio')}
+              onClick={() => {
+                setActiveTab('portfolio')
+                onPageChange?.('portfolio')
+              }}
               className={`px-6 py-2 rounded-lg transition-all duration-200 ${
                 activeTab === 'portfolio'
                   ? 'bg-white/20 text-white font-semibold'
